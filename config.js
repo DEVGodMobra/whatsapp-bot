@@ -4,10 +4,36 @@ module.exports = {
   prefix: '!',
   
   // Nombre del bot
-  botName: '🤖 Bot Amigos',
+  botName: '🤖 Bot Premium',
   
   // Propietario del bot (tu número de WhatsApp)
-  owner: '573223138326@s.whatsapp.net', // Número configurado
+  owner: '573223138326@s.whatsapp.net',
+  ownerNumber: '573223138326',
+  
+  // ========================================
+  // 🎵 YOUTUBE API CONFIGURATION
+  // ========================================
+  // Consigue tu API key en: https://console.cloud.google.com/apis/credentials
+  // 1. Crea un proyecto
+  // 2. Habilita "YouTube Data API v3"
+  // 3. Crea credenciales (API Key)
+  // 4. Copia la key y pégala abajo (o en variable de entorno YOUTUBE_API_KEY)
+  youtubeApiKey: process.env.YOUTUBE_API_KEY || 'TU_API_KEY_AQUI',
+  
+  // Límite de descargas de música por día (plan gratuito: 100/mes)
+  musicDownloadLimit: 100,
+  
+  // ========================================
+  // 📱 MENU SYSTEM
+  // ========================================
+  menuPages: 14, // Total de páginas del menú
+  commandsPerPage: 15, // Comandos promedio por página
+  
+  // ========================================
+  // 👑 VIP SYSTEM
+  // ========================================
+  vipUsers: [], // Números de usuarios VIP (se carga desde database)
+  vipFeatures: ['musicDownload', 'advancedCommands', 'noLimits'],
   
   // Mensajes automáticos
   autoResponses: {
@@ -20,7 +46,9 @@ module.exports = {
   // APIs
   apis: {
     meme: 'https://meme-api.com/gimme',
-    tts: 'https://api.streamelements.com/kappa/v2/speech'
+    tts: 'https://api.streamelements.com/kappa/v2/speech',
+    youtube: 'https://www.googleapis.com/youtube/v3',
+    cobalt: 'https://api.cobalt.tools/api/json'
   },
   
   // Listas para comandos aleatorios
