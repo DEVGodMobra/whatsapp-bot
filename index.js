@@ -1,10 +1,10 @@
-// index.js - Archivo principal del bot de WhatsApp
+// index.js - Versión mejorada con mejor manejo de QR
 const {
   default: makeWASocket,
   DisconnectReason,
   useMultiFileAuthState,
-  makeInMemoryStore,
-  Browsers
+  Browsers,
+  fetchLatestBaileysVersion
 } = require('@whiskeysockets/baileys');
 const pino = require('pino');
 const qrcode = require('qrcode-terminal');
@@ -31,14 +31,22 @@ for (const file of commandFiles) {
 async function startBot() {
   // Configurar autenticación multi-archivo
   const { state, saveCreds } = await useMultiFileAuthState('auth_info_baileys');
+  
+  // Obtener la versión más reciente de Baileys
+  const { version } = await fetchLatestBaileysVersion();
 
   // Crear instancia del socket
   const sock = makeWASocket({
+    version,
     logger: pino({ level: 'silent' }),
     printQRInTerminal: false,
-    browser: Browsers.macOS('Desktop'),
+    browser: Browsers.ubuntu('Chrome'),
     auth: state,
-    defaultQueryTimeoutMs: undefined
+    connectTimeoutMs: 60000,
+    defaultQueryTimeoutMs: 0,
+    keepAliveIntervalMs: 10000,
+    emitOwnEvents: true,
+    generateHighQualityLinkPreview: true
   });
 
   // Guardar credenciales cuando cambien
@@ -48,37 +56,57 @@ async function startBot() {
   sock.ev.on('connection.update', async (update) => {
     const { connection, lastDisconnect, qr } = update;
 
-    // Mostrar código QR
+    // IMPORTANTE: Mostrar código QR
     if (qr) {
-      console.log('\n');
-      logger.info('Escanea el código QR con WhatsApp:');
+      console.log('\n\n');
+      logger.info('═══════════════════════════════════════════════');
+      logger.info('        ESCANEA ESTE CÓDIGO QR CON WHATSAPP');
+      logger.info('═══════════════════════════════════════════════');
       console.log('\n');
       qrcode.generate(qr, { small: true });
       console.log('\n');
+      logger.info('Pasos:');
+      logger.info('1. Abre WhatsApp en tu celular');
+      logger.info('2. Toca los 3 puntos (⋮) → Dispositivos vinculados');
+      logger.info('3. Vincular un dispositivo');
+      logger.info('4. Escanea el código QR de arriba');
+      logger.info('═══════════════════════════════════════════════');
+      console.log('\n\n');
     }
 
-    // Manejar conexión
+    // Manejar estados de conexión
     if (connection === 'close') {
       const shouldReconnect = 
         lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
       
-      logger.warn('Conexión cerrada. Razón: ' + lastDisconnect?.error);
+      const errorMessage = lastDisconnect?.error?.message || 'Desconocido';
+      logger.warn(`Conexión cerrada. Razón: ${errorMessage}`);
       
       if (shouldReconnect) {
-        logger.info('Reconectando...');
+        logger.info('Reconectando en 5 segundos...');
         setTimeout(() => startBot(), 5000);
       } else {
-        logger.error('Bot desconectado. Por favor, escanea el código QR nuevamente.');
+        logger.error('Sesión cerrada. Necesitas escanear el código QR nuevamente.');
+        logger.error('Reinicia el servicio en Railway para obtener un nuevo QR.');
       }
+    } else if (connection === 'connecting') {
+      logger.info('Conectando a WhatsApp...');
     } else if (connection === 'open') {
-      logger.success('✓ Bot conectado exitosamente!');
+      console.log('\n\n');
+      logger.success('═══════════════════════════════════════════════');
+      logger.success('   ✓ BOT CONECTADO EXITOSAMENTE!');
+      logger.success('═══════════════════════════════════════════════');
       console.log('\n');
       logger.info(`Bot: ${config.botName}`);
+      logger.info(`Propietario: ${config.owner}`);
       logger.info(`Prefijo de comandos: ${config.prefix}`);
       logger.info(`Total de comandos: ${commands.size}`);
       console.log('\n');
       logger.success('El bot está listo para recibir mensajes! 🚀');
+      logger.info('Prueba enviando: !menu');
       console.log('\n');
+      logger.success('═══════════════════════════════════════════════');
+      console.log('\n\n');
     }
   });
 
@@ -94,7 +122,6 @@ async function startBot() {
 
     try {
       // Obtener información del mensaje
-      const messageType = Object.keys(m.message)[0];
       const isGroup = helpers.isGroup(m);
       const sender = helpers.getSender(m);
       const senderName = helpers.getSenderName(m);
@@ -143,7 +170,7 @@ async function startBot() {
           try {
             await commands.get(command).execute(sock, m, args);
           } catch (error) {
-            logger.error(`Error ejecutando comando ${command}`, error);
+            logger.error(`Error ejecutando comando ${command}:`, error.message);
             
             await sock.sendMessage(chatId, { 
               text: '❌ Hubo un error al ejecutar este comando. Intenta de nuevo más tarde.' 
@@ -158,7 +185,7 @@ async function startBot() {
       }
       
     } catch (error) {
-      logger.error('Error procesando mensaje', error);
+      logger.error('Error procesando mensaje:', error.message);
     }
   });
 
@@ -167,16 +194,16 @@ async function startBot() {
 
 // Manejo de errores no capturados
 process.on('uncaughtException', (err) => {
-  logger.error('Error no capturado', err);
+  logger.error('Error no capturado:', err.message);
 });
 
 process.on('unhandledRejection', (err) => {
-  logger.error('Promesa rechazada no manejada', err);
+  logger.error('Promesa rechazada:', err.message);
 });
 
 // Iniciar el bot
 console.clear();
-console.log('\n');
+console.log('\n\n');
 logger.info('═══════════════════════════════════════════════');
 logger.info(`  ${config.botName}`);
 logger.info('  Bot de WhatsApp con Baileys');
@@ -184,6 +211,6 @@ logger.info('══════════════════════�
 console.log('\n');
 
 startBot().catch((err) => {
-  logger.error('Error fatal al iniciar el bot', err);
+  logger.error('Error fatal al iniciar el bot:', err.message);
   process.exit(1);
 });
