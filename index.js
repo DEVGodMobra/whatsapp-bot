@@ -1,4 +1,4 @@
-// index.js - Versión mejorada con mejor manejo de QR
+// index.js - Versión con QR mejorado como imagen
 const {
   default: makeWASocket,
   DisconnectReason,
@@ -7,7 +7,7 @@ const {
   fetchLatestBaileysVersion
 } = require('@whiskeysockets/baileys');
 const pino = require('pino');
-const qrcode = require('qrcode-terminal');
+const QRCode = require('qrcode');
 const fs = require('fs');
 const path = require('path');
 
@@ -25,6 +25,35 @@ for (const file of commandFiles) {
   const command = require(path.join(commandsPath, file));
   commands.set(command.name, command);
   logger.info(`Comando cargado: ${command.name}`);
+}
+
+// Función para generar QR como imagen
+async function generateQRImage(qrData) {
+  try {
+    // Generar QR como Data URL (base64)
+    const qrDataURL = await QRCode.toDataURL(qrData, {
+      errorCorrectionLevel: 'H',
+      type: 'image/png',
+      quality: 1,
+      margin: 2,
+      width: 400,
+      color: {
+        dark: '#000000',
+        light: '#FFFFFF'
+      }
+    });
+    
+    // También generar como texto en terminal
+    const qrTerminal = await QRCode.toString(qrData, {
+      type: 'terminal',
+      small: true
+    });
+    
+    return { qrDataURL, qrTerminal };
+  } catch (error) {
+    logger.error('Error generando QR:', error.message);
+    return null;
+  }
 }
 
 // Función principal para iniciar el bot
@@ -59,18 +88,37 @@ async function startBot() {
     // IMPORTANTE: Mostrar código QR
     if (qr) {
       console.log('\n\n');
-      logger.info('═══════════════════════════════════════════════');
-      logger.info('        ESCANEA ESTE CÓDIGO QR CON WHATSAPP');
-      logger.info('═══════════════════════════════════════════════');
+      logger.info('═══════════════════════════════════════════════════════════');
+      logger.info('        🔥 CÓDIGO QR GENERADO - ESCANEA CON WHATSAPP 🔥');
+      logger.info('═══════════════════════════════════════════════════════════');
       console.log('\n');
-      qrcode.generate(qr, { small: true });
-      console.log('\n');
-      logger.info('Pasos:');
-      logger.info('1. Abre WhatsApp en tu celular');
-      logger.info('2. Toca los 3 puntos (⋮) → Dispositivos vinculados');
+      
+      // Generar QR mejorado
+      const qrResult = await generateQRImage(qr);
+      
+      if (qrResult) {
+        // Mostrar QR en terminal
+        console.log(qrResult.qrTerminal);
+        console.log('\n');
+        
+        // Mostrar Data URL del QR (puedes abrirlo en navegador)
+        logger.info('📱 OPCIÓN 1: Escanea el código de arriba con WhatsApp');
+        console.log('\n');
+        logger.info('📱 OPCIÓN 2: Copia esta URL y ábrela en tu navegador:');
+        console.log('\n');
+        console.log(qrResult.qrDataURL);
+        console.log('\n');
+        logger.info('   Luego escanea la imagen que aparece en el navegador');
+        console.log('\n');
+      }
+      
+      logger.info('═══════════════════════════════════════════════════════════');
+      logger.info('PASOS PARA VINCULAR:');
+      logger.info('1. Abre WhatsApp en tu celular (+57 322 313 8326)');
+      logger.info('2. Toca Menú (⋮) → Dispositivos vinculados');
       logger.info('3. Vincular un dispositivo');
-      logger.info('4. Escanea el código QR de arriba');
-      logger.info('═══════════════════════════════════════════════');
+      logger.info('4. Escanea el código QR');
+      logger.info('═══════════════════════════════════════════════════════════');
       console.log('\n\n');
     }
 
@@ -87,25 +135,24 @@ async function startBot() {
         setTimeout(() => startBot(), 5000);
       } else {
         logger.error('Sesión cerrada. Necesitas escanear el código QR nuevamente.');
-        logger.error('Reinicia el servicio en Railway para obtener un nuevo QR.');
       }
     } else if (connection === 'connecting') {
       logger.info('Conectando a WhatsApp...');
     } else if (connection === 'open') {
       console.log('\n\n');
-      logger.success('═══════════════════════════════════════════════');
-      logger.success('   ✓ BOT CONECTADO EXITOSAMENTE!');
-      logger.success('═══════════════════════════════════════════════');
+      logger.success('═══════════════════════════════════════════════════════════');
+      logger.success('   ✓✓✓ BOT CONECTADO EXITOSAMENTE ✓✓✓');
+      logger.success('═══════════════════════════════════════════════════════════');
       console.log('\n');
-      logger.info(`Bot: ${config.botName}`);
-      logger.info(`Propietario: ${config.owner}`);
-      logger.info(`Prefijo de comandos: ${config.prefix}`);
-      logger.info(`Total de comandos: ${commands.size}`);
+      logger.info(`🤖 Bot: ${config.botName}`);
+      logger.info(`👤 Propietario: ${config.owner}`);
+      logger.info(`⚡ Prefijo: ${config.prefix}`);
+      logger.info(`📦 Comandos: ${commands.size}`);
       console.log('\n');
-      logger.success('El bot está listo para recibir mensajes! 🚀');
-      logger.info('Prueba enviando: !menu');
+      logger.success('🚀 El bot está listo para recibir mensajes!');
+      logger.info('💬 Prueba enviando: !menu');
       console.log('\n');
-      logger.success('═══════════════════════════════════════════════');
+      logger.success('═══════════════════════════════════════════════════════════');
       console.log('\n\n');
     }
   });
@@ -114,23 +161,16 @@ async function startBot() {
   sock.ev.on('messages.upsert', async ({ messages }) => {
     const m = messages[0];
     
-    // Ignorar mensajes del bot mismo
     if (m.key.fromMe) return;
-    
-    // Ignorar mensajes sin contenido
     if (!m.message) return;
 
     try {
-      // Obtener información del mensaje
       const isGroup = helpers.isGroup(m);
-      const sender = helpers.getSender(m);
       const senderName = helpers.getSenderName(m);
       const chatId = m.key.remoteJid;
 
-      // Log del mensaje
       logger.message(senderName, isGroup);
 
-      // Obtener el texto del mensaje
       let text = '';
       
       if (m.message.conversation) {
@@ -143,7 +183,6 @@ async function startBot() {
         text = m.message.videoMessage.caption;
       }
 
-      // Convertir a minúsculas para comparaciones
       const lowerText = text.toLowerCase().trim();
 
       // Respuestas automáticas
@@ -162,10 +201,8 @@ async function startBot() {
 
         const { command, args } = parsed;
 
-        // Log del comando
         logger.command(`${config.prefix}${command}`, senderName);
 
-        // Ejecutar comando si existe
         if (commands.has(command)) {
           try {
             await commands.get(command).execute(sock, m, args);
@@ -177,7 +214,6 @@ async function startBot() {
             });
           }
         } else {
-          // Comando no encontrado
           await sock.sendMessage(chatId, { 
             text: `❌ Comando *${config.prefix}${command}* no encontrado.\n\nEscribe *${config.prefix}menu* para ver los comandos disponibles.` 
           });
@@ -192,7 +228,7 @@ async function startBot() {
   return sock;
 }
 
-// Manejo de errores no capturados
+// Manejo de errores
 process.on('uncaughtException', (err) => {
   logger.error('Error no capturado:', err.message);
 });
@@ -204,10 +240,10 @@ process.on('unhandledRejection', (err) => {
 // Iniciar el bot
 console.clear();
 console.log('\n\n');
-logger.info('═══════════════════════════════════════════════');
+logger.info('═══════════════════════════════════════════════════════════');
 logger.info(`  ${config.botName}`);
 logger.info('  Bot de WhatsApp con Baileys');
-logger.info('═══════════════════════════════════════════════');
+logger.info('═══════════════════════════════════════════════════════════');
 console.log('\n');
 
 startBot().catch((err) => {
