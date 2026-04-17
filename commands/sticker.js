@@ -1,4 +1,4 @@
-// commands/sticker.js - Comando para crear stickers (versión simplificada)
+// commands/sticker.js - Comando para crear stickers (versión corregida)
 const { downloadMediaMessage } = require('@whiskeysockets/baileys');
 const logger = require('../utils/logger');
 
@@ -15,8 +15,7 @@ module.exports = {
       if (!imageMsg) {
         return await sock.sendMessage(message.key.remoteJid, { 
           text: '❌ Por favor responde a una *imagen* con !sticker\n\n' +
-                '💡 Tip: El comando funciona con imágenes solamente.\n' +
-                '(Los videos requieren procesamiento adicional que está en desarrollo)'
+                '💡 Envía una imagen y luego responde a ella con !sticker'
         });
       }
 
@@ -37,9 +36,12 @@ module.exports = {
         }
       );
 
-      // Enviar el sticker directamente
+      // Enviar el sticker con metadata correcta
       await sock.sendMessage(message.key.remoteJid, {
-        sticker: buffer
+        sticker: buffer,
+        mimetype: 'image/webp'
+      }, {
+        quoted: message
       });
 
       logger.success('Sticker creado y enviado correctamente');
@@ -50,10 +52,10 @@ module.exports = {
       await sock.sendMessage(message.key.remoteJid, { 
         text: '❌ No pude crear el sticker.\n\n' +
               'Posibles causas:\n' +
-              '• La imagen es muy grande\n' +
-              '• Formato de imagen no soportado\n' +
-              '• Error del servidor\n\n' +
-              '💡 Intenta con una imagen más pequeña o en formato JPG/PNG.'
+              '• La imagen es muy grande (máx 1MB)\n' +
+              '• Formato no soportado (usa JPG o PNG)\n' +
+              '• Error temporal del servidor\n\n' +
+              '💡 Intenta con una imagen más pequeña.'
       });
     }
   }
