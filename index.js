@@ -1,13 +1,13 @@
-// index.js - Versión con QR mejorado como imagen
+// index.js - Versión con código de emparejamiento (más confiable)
 const {
   default: makeWASocket,
   DisconnectReason,
   useMultiFileAuthState,
   Browsers,
-  fetchLatestBaileysVersion
+  fetchLatestBaileysVersion,
+  makeInMemoryStore
 } = require('@whiskeysockets/baileys');
 const pino = require('pino');
-const QRCode = require('qrcode');
 const fs = require('fs');
 const path = require('path');
 
@@ -15,6 +15,9 @@ const path = require('path');
 const config = require('./config');
 const logger = require('./utils/logger');
 const helpers = require('./utils/helpers');
+
+// TU NÚMERO DE WHATSAPP (sin el +)
+const PHONE_NUMBER = '573223138326';
 
 // Cargar todos los comandos dinámicamente
 const commands = new Map();
@@ -25,35 +28,6 @@ for (const file of commandFiles) {
   const command = require(path.join(commandsPath, file));
   commands.set(command.name, command);
   logger.info(`Comando cargado: ${command.name}`);
-}
-
-// Función para generar QR como imagen
-async function generateQRImage(qrData) {
-  try {
-    // Generar QR como Data URL (base64)
-    const qrDataURL = await QRCode.toDataURL(qrData, {
-      errorCorrectionLevel: 'H',
-      type: 'image/png',
-      quality: 1,
-      margin: 2,
-      width: 400,
-      color: {
-        dark: '#000000',
-        light: '#FFFFFF'
-      }
-    });
-    
-    // También generar como texto en terminal
-    const qrTerminal = await QRCode.toString(qrData, {
-      type: 'terminal',
-      small: true
-    });
-    
-    return { qrDataURL, qrTerminal };
-  } catch (error) {
-    logger.error('Error generando QR:', error.message);
-    return null;
-  }
 }
 
 // Función principal para iniciar el bot
@@ -69,57 +43,67 @@ async function startBot() {
     version,
     logger: pino({ level: 'silent' }),
     printQRInTerminal: false,
+    mobile: false,
     browser: Browsers.ubuntu('Chrome'),
-    auth: state,
+    auth: {
+      creds: state.creds,
+      keys: state.keys,
+    },
     connectTimeoutMs: 60000,
     defaultQueryTimeoutMs: 0,
     keepAliveIntervalMs: 10000,
     emitOwnEvents: true,
-    generateHighQualityLinkPreview: true
+    generateHighQualityLinkPreview: true,
+    syncFullHistory: false,
+    markOnlineOnConnect: false
   });
 
   // Guardar credenciales cuando cambien
   sock.ev.on('creds.update', saveCreds);
 
+  // Variable para controlar si ya se pidió el código
+  let pairingCodeRequested = false;
+
   // Manejar actualizaciones de conexión
   sock.ev.on('connection.update', async (update) => {
     const { connection, lastDisconnect, qr } = update;
 
-    // IMPORTANTE: Mostrar código QR
-    if (qr) {
+    // Si hay QR disponible, solicitar código de emparejamiento en su lugar
+    if (qr && !pairingCodeRequested) {
+      pairingCodeRequested = true;
+      
       console.log('\n\n');
       logger.info('═══════════════════════════════════════════════════════════');
-      logger.info('        🔥 CÓDIGO QR GENERADO - ESCANEA CON WHATSAPP 🔥');
+      logger.info('        🔥 GENERANDO CÓDIGO DE EMPAREJAMIENTO 🔥');
       logger.info('═══════════════════════════════════════════════════════════');
       console.log('\n');
       
-      // Generar QR mejorado
-      const qrResult = await generateQRImage(qr);
-      
-      if (qrResult) {
-        // Mostrar QR en terminal
-        console.log(qrResult.qrTerminal);
+      try {
+        // Solicitar código de emparejamiento
+        const code = await sock.requestPairingCode(PHONE_NUMBER);
+        
+        console.log('\n');
+        logger.success('═══════════════════════════════════════════════════════════');
+        logger.success(`        🔢 CÓDIGO: ${code}`);
+        logger.success('═══════════════════════════════════════════════════════════');
         console.log('\n');
         
-        // Mostrar Data URL del QR (puedes abrirlo en navegador)
-        logger.info('📱 OPCIÓN 1: Escanea el código de arriba con WhatsApp');
+        logger.info('📱 PASOS PARA VINCULAR EN WHATSAPP:');
         console.log('\n');
-        logger.info('📱 OPCIÓN 2: Copia esta URL y ábrela en tu navegador:');
+        logger.info(`1. Abre WhatsApp en tu celular (${PHONE_NUMBER})`);
+        logger.info('2. Toca Menú (⋮) → Dispositivos vinculados');
+        logger.info('3. Toca "Vincular con número de teléfono"');
+        logger.info(`4. Ingresa este código: ${code}`);
         console.log('\n');
-        console.log(qrResult.qrDataURL);
+        logger.info('⏰ El código expira en 1 minuto');
+        logger.info('💡 Si expira, reinicia el servicio en Railway');
         console.log('\n');
-        logger.info('   Luego escanea la imagen que aparece en el navegador');
-        console.log('\n');
+        logger.info('═══════════════════════════════════════════════════════════');
+        console.log('\n\n');
+        
+      } catch (error) {
+        logger.error('Error solicitando código de emparejamiento:', error.message);
       }
-      
-      logger.info('═══════════════════════════════════════════════════════════');
-      logger.info('PASOS PARA VINCULAR:');
-      logger.info('1. Abre WhatsApp en tu celular (+57 322 313 8326)');
-      logger.info('2. Toca Menú (⋮) → Dispositivos vinculados');
-      logger.info('3. Vincular un dispositivo');
-      logger.info('4. Escanea el código QR');
-      logger.info('═══════════════════════════════════════════════════════════');
-      console.log('\n\n');
     }
 
     // Manejar estados de conexión
@@ -132,9 +116,11 @@ async function startBot() {
       
       if (shouldReconnect) {
         logger.info('Reconectando en 5 segundos...');
+        pairingCodeRequested = false; // Resetear para pedir nuevo código
         setTimeout(() => startBot(), 5000);
       } else {
-        logger.error('Sesión cerrada. Necesitas escanear el código QR nuevamente.');
+        logger.error('Sesión cerrada permanentemente.');
+        logger.error('Elimina la carpeta auth_info_baileys y reinicia.');
       }
     } else if (connection === 'connecting') {
       logger.info('Conectando a WhatsApp...');
@@ -145,12 +131,12 @@ async function startBot() {
       logger.success('═══════════════════════════════════════════════════════════');
       console.log('\n');
       logger.info(`🤖 Bot: ${config.botName}`);
-      logger.info(`👤 Propietario: ${config.owner}`);
+      logger.info(`👤 Número: ${PHONE_NUMBER}`);
       logger.info(`⚡ Prefijo: ${config.prefix}`);
       logger.info(`📦 Comandos: ${commands.size}`);
       console.log('\n');
       logger.success('🚀 El bot está listo para recibir mensajes!');
-      logger.info('💬 Prueba enviando: !menu');
+      logger.info('💬 Prueba enviando: !menu a cualquier chat');
       console.log('\n');
       logger.success('═══════════════════════════════════════════════════════════');
       console.log('\n\n');
@@ -243,6 +229,7 @@ console.log('\n\n');
 logger.info('═══════════════════════════════════════════════════════════');
 logger.info(`  ${config.botName}`);
 logger.info('  Bot de WhatsApp con Baileys');
+logger.info(`  Número: ${PHONE_NUMBER}`);
 logger.info('═══════════════════════════════════════════════════════════');
 console.log('\n');
 
