@@ -1,8 +1,6 @@
-// commands/tts.js - Comando para convertir texto a voz
+// commands/tts.js - Comando para convertir texto a voz (Google Translate)
 const axios = require('axios');
 const logger = require('../utils/logger');
-const fs = require('fs');
-const path = require('path');
 
 module.exports = {
   name: 'tts',
@@ -31,13 +29,16 @@ module.exports = {
         text: '🎤 Generando audio... ⏳' 
       });
 
-      // Usar API de text-to-speech (StreamElements)
-      const url = `https://api.streamelements.com/kappa/v2/speech?voice=Mia&text=${encodeURIComponent(text)}`;
+      // Usar Google Translate TTS API
+      const url = `https://translate.google.com/translate_tts?ie=UTF-8&tl=es&client=tw-ob&q=${encodeURIComponent(text)}`;
       
       // Descargar el audio
       const response = await axios.get(url, { 
         responseType: 'arraybuffer',
-        timeout: 30000
+        timeout: 30000,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        }
       });
 
       const audioBuffer = Buffer.from(response.data);

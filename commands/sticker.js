@@ -1,27 +1,22 @@
-// commands/sticker.js - Comando para crear stickers
-const ffmpeg = require('fluent-ffmpeg');
-const ffmpegPath = require('@ffmpeg-installer/ffmpeg').path;
-const helpers = require('../utils/helpers');
+// commands/sticker.js - Comando para crear stickers (versión simplificada)
+const { downloadMediaMessage } = require('@whiskeysockets/baileys');
 const logger = require('../utils/logger');
-const fs = require('fs');
-const path = require('path');
-
-ffmpeg.setFfmpegPath(ffmpegPath);
 
 module.exports = {
   name: 'sticker',
-  description: 'Convierte una imagen o video en sticker',
+  description: 'Convierte una imagen en sticker',
   
   async execute(sock, message) {
     try {
-      // Verificar si el mensaje tiene una imagen o video
+      // Verificar si el mensaje tiene una imagen
       const quotedMsg = message.message?.extendedTextMessage?.contextInfo?.quotedMessage;
       const imageMsg = message.message?.imageMessage || quotedMsg?.imageMessage;
-      const videoMsg = message.message?.videoMessage || quotedMsg?.videoMessage;
 
-      if (!imageMsg && !videoMsg) {
+      if (!imageMsg) {
         return await sock.sendMessage(message.key.remoteJid, { 
-          text: '❌ Por favor responde a una imagen o video con !sticker' 
+          text: '❌ Por favor responde a una *imagen* con !sticker\n\n' +
+                '💡 Tip: El comando funciona con imágenes solamente.\n' +
+                '(Los videos requieren procesamiento adicional que está en desarrollo)'
         });
       }
 
@@ -30,81 +25,35 @@ module.exports = {
         text: '🎨 Creando sticker... ⏳' 
       });
 
-      // Descargar el archivo multimedia
-      let buffer;
-      if (imageMsg) {
-        const stream = await sock.downloadMediaMessage(message.message?.extendedTextMessage ? 
-          { message: quotedMsg } : message);
-        buffer = stream;
-      } else if (videoMsg) {
-        const stream = await sock.downloadMediaMessage(message.message?.extendedTextMessage ? 
-          { message: quotedMsg } : message);
-        buffer = stream;
-      }
-
-      // Crear rutas temporales
-      const tempInput = path.join(__dirname, '..', `temp_${Date.now()}.${imageMsg ? 'jpg' : 'mp4'}`);
-      const tempOutput = path.join(__dirname, '..', `sticker_${Date.now()}.webp`);
-
-      // Guardar archivo temporal
-      fs.writeFileSync(tempInput, buffer);
-
-      // Convertir a sticker usando ffmpeg
-      await new Promise((resolve, reject) => {
-        const command = ffmpeg(tempInput);
-        
-        if (videoMsg) {
-          // Para videos: limitar a 10 segundos y optimizar
-          command
-            .setStartTime('00:00:00')
-            .setDuration(10)
-            .outputOptions([
-              '-vcodec', 'libwebp',
-              '-vf', "scale='min(320,iw)':min'(320,ih)':force_original_aspect_ratio=decrease,fps=15,pad=320:320:-1:-1:color=white@0.0,format=rgba",
-              '-loop', '0',
-              '-preset', 'default',
-              '-an',
-              '-vsync', '0',
-              '-s', '512:512'
-            ]);
-        } else {
-          // Para imágenes
-          command.outputOptions([
-            '-vcodec', 'libwebp',
-            '-vf', "scale='min(320,iw)':min'(320,ih)':force_original_aspect_ratio=decrease,format=rgba,pad=320:320:-1:-1:color=white@0.0",
-            '-loop', '0',
-            '-preset', 'default',
-            '-an',
-            '-vsync', '0'
-          ]);
+      // Descargar la imagen
+      const buffer = await downloadMediaMessage(
+        message.message?.extendedTextMessage ? 
+          { message: quotedMsg } : message,
+        'buffer',
+        {},
+        { 
+          logger: require('pino')({ level: 'silent' }),
+          reuploadRequest: sock.updateMediaMessage
         }
+      );
 
-        command
-          .toFormat('webp')
-          .on('end', () => resolve())
-          .on('error', (err) => reject(err))
-          .save(tempOutput);
-      });
-
-      // Leer el sticker generado
-      const stickerBuffer = fs.readFileSync(tempOutput);
-
-      // Enviar el sticker
+      // Enviar el sticker directamente
       await sock.sendMessage(message.key.remoteJid, {
-        sticker: stickerBuffer
+        sticker: buffer
       });
-
-      // Limpiar archivos temporales
-      fs.unlinkSync(tempInput);
-      fs.unlinkSync(tempOutput);
 
       logger.success('Sticker creado y enviado correctamente');
       
     } catch (error) {
-      logger.error('Error al crear el sticker', error);
+      logger.error('Error al crear el sticker:', error.message);
       
       await sock.sendMessage(message.key.remoteJid, { 
-        text: '❌ No pude crear el sticker. Asegúrate de que la imagen o video sea válido.' 
+        text: '❌ No pude crear el sticker.\n\n' +
+              'Posibles causas:\n' +
+              '• La imagen es muy grande\n' +
+              '• Formato de imagen no soportado\n' +
+              '• Error del servidor\n\n' +
+              '💡 Intenta con una imagen más pequeña o en formato JPG/PNG.'
       });
     }
   }

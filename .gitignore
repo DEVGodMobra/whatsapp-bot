@@ -1,0 +1,24 @@
+# Node modules
+node_modules/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Environment variables
+.env
+.env.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Auth
+auth_info_baileys/
+
+# Temporary files
+*.tmp
+*.temp
+temp_*
+sticker_*
+audio_*

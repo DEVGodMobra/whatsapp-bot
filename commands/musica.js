@@ -1,20 +1,17 @@
-// commands/musica.js - Comando para descargar música de YouTube
-const ytdl = require('ytdl-core');
-const fs = require('fs');
-const path = require('path');
-const logger = require('../utils/logger');
+// commands/musica.js - Comando con vista previa de YouTube
 const axios = require('axios');
+const logger = require('../utils/logger');
 
 module.exports = {
   name: 'musica',
-  description: 'Descarga música de YouTube',
+  description: 'Busca música/video en YouTube y muestra vista previa',
   
   async execute(sock, message, args) {
     try {
       // Verificar que se haya proporcionado un nombre
       if (args.length === 0) {
         return await sock.sendMessage(message.key.remoteJid, { 
-          text: '❌ Por favor especifica el nombre de la canción.\n\n*Ejemplo:* !musica despacito' 
+          text: '❌ Por favor especifica el nombre de la canción o video.\n\n*Ejemplo:* !musica despacito' 
         });
       }
 
@@ -22,84 +19,60 @@ module.exports = {
 
       // Enviar mensaje de búsqueda
       await sock.sendMessage(message.key.remoteJid, { 
-        text: `🔍 Buscando: *${query}*... ⏳` 
+        text: `🔍 Buscando: *${query}*...\n⏳ Esto puede tomar unos segundos...` 
       });
 
-      // Buscar en YouTube usando una API de búsqueda
-      // Nota: Usaremos una búsqueda simple de YouTube
-      const searchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`;
-      
-      // Alternativa: usar ytdl-core para obtener info de un video conocido
-      // Por simplicidad, vamos a asumir que el usuario proporciona una URL o usamos una API externa
-      
-      // Para este ejemplo, vamos a simular con una URL de ejemplo
-      // En producción, deberías usar una API de búsqueda de YouTube como youtube-search-api
-      
-      await sock.sendMessage(message.key.remoteJid, { 
-        text: `ℹ️ *Nota:* Para descargar música, necesitas proporcionar una URL directa de YouTube.\n\n*Ejemplo:* !musica https://youtu.be/kJQP7kiw5Fk\n\n_O puedes usar servicios de búsqueda de YouTube manualmente por ahora._` 
-      });
-
-      // Si el primer argumento es una URL válida de YouTube
-      if (ytdl.validateURL(args[0])) {
-        const url = args[0];
+      try {
+        // Buscar en YouTube usando scraping simple
+        const searchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`;
         
-        await sock.sendMessage(message.key.remoteJid, { 
-          text: '📥 Descargando audio... ⏳' 
+        const response = await axios.get(searchUrl, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+          }
         });
 
-        // Obtener información del video
-        const info = await ytdl.getInfo(url);
-        const title = info.videoDetails.title;
-        const duration = parseInt(info.videoDetails.lengthSeconds);
+        const html = response.data;
+        
+        // Buscar el primer video ID en el HTML
+        const videoIdMatch = html.match(/"videoId":"([^"]+)"/);
+        
+        if (videoIdMatch && videoIdMatch[1]) {
+          const videoId = videoIdMatch[1];
+          const videoUrl = `https://youtu.be/${videoId}`;
+          
+          // Enviar el enlace - WhatsApp generará vista previa automáticamente
+          await sock.sendMessage(message.key.remoteJid, { 
+            text: `🎵 *Resultado para:* ${query}\n\n${videoUrl}\n\n💡 *Toca la imagen para reproducir el video*\n\n_Vista previa generada automáticamente por WhatsApp_`
+          });
 
-        // Limitar a 10 minutos (600 segundos)
-        if (duration > 600) {
-          return await sock.sendMessage(message.key.remoteJid, { 
-            text: '❌ El audio es demasiado largo (máximo 10 minutos).' 
+          logger.success(`Video encontrado: ${videoUrl}`);
+        } else {
+          // Si no se encuentra, enviar enlace de búsqueda
+          await sock.sendMessage(message.key.remoteJid, { 
+            text: `🔍 *Búsqueda:* ${query}\n\n` +
+                  `No pude encontrar un resultado exacto, pero aquí está el enlace de búsqueda:\n\n` +
+                  `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}\n\n` +
+                  `💡 Toca el enlace para ver todos los resultados`
           });
         }
-
-        // Crear archivo temporal
-        const tempFile = path.join(__dirname, '..', `audio_${Date.now()}.mp3`);
-
-        // Descargar audio
-        const stream = ytdl(url, { 
-          quality: 'highestaudio',
-          filter: 'audioonly'
+        
+      } catch (searchError) {
+        // Si falla el scraping, enviar enlace de búsqueda manual
+        const searchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`;
+        
+        await sock.sendMessage(message.key.remoteJid, { 
+          text: `🔍 *Búsqueda:* ${query}\n\n` +
+                `Aquí está el enlace de búsqueda:\n\n${searchUrl}\n\n` +
+                `💡 Toca el enlace para ver los resultados`
         });
-
-        const writeStream = fs.createWriteStream(tempFile);
-        stream.pipe(writeStream);
-
-        await new Promise((resolve, reject) => {
-          writeStream.on('finish', resolve);
-          writeStream.on('error', reject);
-        });
-
-        // Leer el archivo
-        const audioBuffer = fs.readFileSync(tempFile);
-
-        // Enviar el audio
-        await sock.sendMessage(message.key.remoteJid, {
-          audio: audioBuffer,
-          mimetype: 'audio/mp4',
-          fileName: `${title}.mp3`,
-          ptt: false
-        }, { 
-          quoted: message 
-        });
-
-        // Eliminar archivo temporal
-        fs.unlinkSync(tempFile);
-
-        logger.success(`Audio enviado: ${title}`);
       }
       
     } catch (error) {
-      logger.error('Error al descargar música', error);
+      logger.error('Error en comando música:', error.message);
       
       await sock.sendMessage(message.key.remoteJid, { 
-        text: '❌ No pude descargar el audio. Verifica que la URL sea válida o intenta de nuevo más tarde.' 
+        text: '❌ Ocurrió un error al buscar. Intenta de nuevo con otro término de búsqueda.' 
       });
     }
   }
