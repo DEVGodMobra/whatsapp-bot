@@ -1,0 +1,26 @@
+{
+  "name": "whatsapp-bot-baileys",
+  "version": "1.0.0",
+  "description": "Bot de WhatsApp con comandos interactivos para grupos",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node index.js"
+  },
+  "keywords": ["whatsapp", "bot", "baileys", "automation"],
+  "author": "Tu Nombre",
+  "license": "MIT",
+  "dependencies": {
+    "@whiskeysockets/baileys": "^6.7.8",
+    "axios": "^1.6.2",
+    "pino": "^8.17.2",
+    "qrcode-terminal": "^0.12.0",
+    "@ffmpeg-installer/ffmpeg": "^1.1.0",
+    "fluent-ffmpeg": "^2.1.2",
+    "ytdl-core": "^4.11.5",
+    "node-fetch": "^2.7.0",
+    "form-data": "^4.0.0",
+    "file-type": "^16.5.4",
+    "sharp": "^0.33.1"
+  }
+}
